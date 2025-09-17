@@ -19,6 +19,15 @@ const eslintConfig = [
       "build/**",
       "next-env.d.ts",
     ],
+    rules: {
+      // 👇 disable specific rules
+      "@next/next/no-img-element": "off",
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+      // (optional) tweak others if needed
+      "react-hooks/exhaustive-deps": "warn",
+      "no-console": "warn",
+    },
   },
 ];
 

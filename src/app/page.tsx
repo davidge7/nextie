@@ -4,8 +4,12 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronDown, MessageCircle, Code, FileText, User, Sparkles, ArrowRight, Sun, Moon, Menu, X } from 'lucide-react';
 import 'next/navigation';
+import { useRouter } from 'next/navigation'; // ✅ import useRouter
 
 export default function Home() {
+  const router = useRouter(); // ✅ define router
+
+
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isVisible, setIsVisible] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true);
@@ -43,10 +47,8 @@ export default function Home() {
   };
 
   const handleNavigation = (href: string) => {
-    setIsMobileMenuOpen(false);
-    // In a real Next.js app, this would be router.push(href)
-    // For demo purposes, we'll use window.location
-    window.location.href = href;
+    router.push(href);
+    setIsMobileMenuOpen(false); // ✅ still close the menu
   };
 
   const features = [
