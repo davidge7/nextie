@@ -1,18 +1,38 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, FormEvent } from "react";
 import axios from "axios";
-import { Sparkles, Sun, Moon, ArrowRight } from 'lucide-react'; // Added Lucide icons
+import { Sparkles, Sun, Moon, ArrowRight } from 'lucide-react';
+
+interface Model {
+  name: string;
+  displayName: string;
+  description: string;
+  inputTokenLimit: number;
+  outputTokenLimit: number;
+}
+
+// Extend the chat message interface to include responseTime
+interface ChatMessage {
+  sender: string;
+  text: string;
+  responseTime?: number; // Optional response time in milliseconds
+}
 
 export default function ChatPage() {
   const [message, setMessage] = useState("");
-  const [chat, setChat] = useState<[]>([]);
+  const [chat, setChat] = useState<ChatMessage[]>([]); // Typed chat state with responseTime
   const [isLoading, setIsLoading] = useState(false);
-  const chatContainerRef = useRef<any>(null);
+  const [models, setModels] = useState<Model[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [modelsLoading, setModelsLoading] = useState<boolean>(true);
+  const [modelsError, setModelsError] = useState<string | null>(null);
 
-  // Dark mode state and toggle from the Home component
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  // Dark mode state and toggle
   const [isDarkMode, setIsDarkMode] = useState(true);
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 }); // For mouse follower
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
 
   // Effect for mouse follower
   useEffect(() => {
@@ -23,37 +43,71 @@ export default function ChatPage() {
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
 
+  // Scroll to bottom of chat
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [chat]);
 
+  // Fetch models on component mount
+  useEffect(() => {
+    async function fetchModels() {
+      setModelsLoading(true);
+      setModelsError(null);
+      try {
+        const response = await axios.get('/api/models');
+        const data: Model[] = response.data;
+        setModels(data);
+        if (data.length > 0) {
+          // Set a default model
+          setSelectedModel(data[0].name);
+        }
+      } catch (e: any) {
+        console.error('Failed to fetch models:', e);
+        setModelsError(`Failed to fetch models: ${e.message}`);
+      } finally {
+        setModelsLoading(false);
+      }
+    }
+    fetchModels();
+  }, []);
+
   const toggleDarkMode = () => {
     setIsDarkMode(!isDarkMode);
   };
 
-  const sendMessage = async () => {
-    if (!message.trim() || isLoading) return;
+  const sendMessage = async (e: FormEvent) => {
+    e.preventDefault();
 
-    const userMessage = { sender: "user", text: message.trim() };
+    if (!message.trim() || isLoading || !selectedModel) return;
+
+    const userMessage: ChatMessage = { sender: "user", text: message.trim() };
     const newChat = [...chat, userMessage];
     setChat(newChat);
     setMessage("");
     setIsLoading(true);
 
+    const startTime = performance.now(); // Start timer
+
     try {
-      const res = await axios.post("/api/chat", { message: userMessage.text });
-      setChat([...newChat, { sender: "bot", text: res.data.reply }]);
-    } catch (err) {
+      const res = await axios.post("/api/chat", {
+        message: userMessage.text,
+        modelName: selectedModel // Ensure this matches your API route's expectation
+      });
+      const endTime = performance.now(); // End timer
+      const duration = endTime - startTime; // Calculate duration
+
+      setChat([...newChat, { sender: "bot", text: res.data.reply, responseTime: duration }]);
+    } catch (err: any) {
       console.error(err);
-      setChat([...newChat, { sender: "bot", text: "Sorry, I encountered an error. Please try again." }]);
+      setChat([...newChat, { sender: "bot", text: `Sorry, I encountered an error: ${err.response?.data?.error || err.message}. Please try again.` }]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Theme classes inspired by the Home component
+  // Theme classes
   const themeClasses = {
     background: isDarkMode
       ? "bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900"
@@ -70,9 +124,11 @@ export default function ChatPage() {
     inputBg: isDarkMode ? "bg-gray-700" : "bg-gray-100",
     inputBorder: isDarkMode ? "border-gray-700" : "border-gray-200",
     inputTextColor: isDarkMode ? "text-gray-200" : "text-gray-800",
-    // Specific for chat bubbles
     botBubbleBg: isDarkMode ? "bg-gray-800" : "bg-white",
     botBubbleText: isDarkMode ? "text-gray-200" : "text-gray-800",
+    dropdownBg: isDarkMode ? "bg-gray-700" : "bg-white",
+    dropdownBorder: isDarkMode ? "border-gray-600" : "border-gray-300",
+    dropdownText: isDarkMode ? "text-gray-200" : "text-gray-800",
   };
 
   return (
@@ -96,7 +152,7 @@ export default function ChatPage() {
       />
 
       {/* Header - Styled like Home component's nav */}
-      <div className={`relative z-20 flex justify-between items-center p-4 md:p-8 ${isDarkMode ? 'bg-gradient-to-br from-slate-900/80 via-purple-900/80 to-slate-900/80' : 'bg-gradient-to-br from-blue-50/80 via-purple-50/80 to-pink-50/80'} backdrop-blur-sm shadow-sm`}>
+      <div className={`relative z-20 flex flex-col md:flex-row justify-between items-center p-4 md:p-8 ${isDarkMode ? 'bg-gradient-to-br from-slate-900/80 via-purple-900/80 to-slate-900/80' : 'bg-gradient-to-br from-blue-50/80 via-purple-50/80 to-pink-50/80'} backdrop-blur-sm shadow-sm gap-4`}>
         <div className="flex items-center space-x-2">
           <div className="w-8 h-8 md:w-10 md:h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
             <Sparkles className="w-4 h-4 md:w-6 md:h-6 text-white" />
@@ -106,38 +162,69 @@ export default function ChatPage() {
           </span>
         </div>
 
-        <button
-          onClick={toggleDarkMode}
-          className={`p-2 rounded-lg ${themeClasses.textMuted} hover:${themeClasses.text} transition-colors duration-300`}
-        >
-          {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-        </button>
+        {/* Model Selection Dropdown */}
+        <div className="flex items-center space-x-2">
+          <label htmlFor="model-select" className={`text-sm md:text-base ${themeClasses.textSecondary} hidden md:block`}>Model:</label>
+          <select
+            id="model-select"
+            value={selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value)}
+            className={`rounded-lg px-3 py-1 md:px-4 md:py-2 ${themeClasses.dropdownBg} ${themeClasses.dropdownText} ${themeClasses.dropdownBorder} border focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm md:text-base`}
+            disabled={modelsLoading || isLoading}
+          >
+            {modelsLoading ? (
+              <option value="">Loading models...</option>
+            ) : modelsError ? (
+              <option value="">Error loading models</option>
+            ) : models.length === 0 ? (
+              <option value="">No models available</option>
+            ) : (
+              models.map((model) => (
+                <option key={model.name} value={model.name}>
+                  {model.displayName}
+                </option>
+              ))
+            )}
+          </select>
+
+          <button
+            onClick={toggleDarkMode}
+            className={`p-2 rounded-lg ${themeClasses.textMuted} hover:${themeClasses.text} transition-colors duration-300`}
+          >
+            {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+          </button>
+        </div>
       </div>
 
       {/* Chat Container */}
       <div
         ref={chatContainerRef}
-        className="relative z-20 flex-1 overflow-y-auto pt-20 pb-32 px-4 md:px-6 space-y-6"
+        className="relative z-20 flex-1 overflow-y-auto pt-4 pb-28 px-4 md:px-6 space-y-6"
       >
         {chat.length === 0 && (
           <div className={`text-center ${themeClasses.textMuted} mt-10 text-lg md:text-xl font-medium`}>
-            <p>👋 Hello! I&apos;m your AI Chat Assistant.</p>
+            <p>👋 Hello! I'm your AI Chat Assistant.</p>
             <p>Ask me anything!</p>
           </div>
         )}
 
-        {chat.map((message: any, i) => (
+        {chat.map((message, i) => (
           <div
             key={i}
-            className={`flex ${message?.sender === "user" ? "justify-end" : "justify-start"}`}
+            className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
               className={`max-w-[80%] md:max-w-[70%] rounded-2xl px-4 py-3 ${message.sender === "user"
-                  ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg"
-                  : `${themeClasses.botBubbleBg} ${themeClasses.botBubbleText} shadow-md`
+                ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg"
+                : `${themeClasses.botBubbleBg} ${themeClasses.botBubbleText} shadow-md`
                 }`}
             >
               <p className="whitespace-pre-wrap text-sm md:text-base">{message.text}</p>
+              {message.sender === "bot" && message.responseTime !== undefined && (
+                <span className={`block text-right text-xs mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  ({message.responseTime.toFixed(2)} ms)
+                </span>
+              )}
             </div>
           </div>
         ))}
@@ -156,26 +243,26 @@ export default function ChatPage() {
       </div>
 
       {/* Message Input */}
-      <div className={`relative z-20 bottom-0 w-full ${themeClasses.cardBg} border-t ${themeClasses.border} px-4 py-4 backdrop-blur-sm`}>
+      <form onSubmit={sendMessage} className={`relative z-20 w-full ${themeClasses.cardBg} border-t ${themeClasses.border} px-4 py-4 backdrop-blur-sm`}>
         <div className="max-w-4xl mx-auto flex gap-3 md:gap-4">
           <input
             type="text"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
             placeholder="Type your message..."
             className={`flex-1 rounded-full px-4 md:px-6 py-2 md:py-3 ${themeClasses.inputBg} ${themeClasses.inputTextColor} focus:outline-none focus:ring-2 focus:ring-blue-500 border ${themeClasses.inputBorder} text-sm md:text-base`}
+            disabled={isLoading || modelsLoading || !selectedModel}
           />
           <button
-            onClick={sendMessage}
-            disabled={isLoading || !message.trim()}
+            type="submit"
+            disabled={isLoading || !message.trim() || modelsLoading || !selectedModel}
             className="rounded-full px-4 md:px-6 py-2 md:py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold hover:from-blue-600 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 flex items-center justify-center text-sm md:text-base"
           >
             Send
             <ArrowRight className="ml-2 w-4 h-4" />
           </button>
         </div>
-      </div>
+      </form>
     </div>
   );
 }
