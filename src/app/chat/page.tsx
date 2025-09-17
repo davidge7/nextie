@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, FormEvent } from "react"; // Added FormEvent
+import { useState, useRef, useEffect, FormEvent } from "react";
 import axios from "axios";
 import { Sparkles, Sun, Moon, ArrowRight } from 'lucide-react';
 
@@ -12,20 +12,27 @@ interface Model {
   outputTokenLimit: number;
 }
 
+// Extend the chat message interface to include responseTime
+interface ChatMessage {
+  sender: string;
+  text: string;
+  responseTime?: number; // Optional response time in milliseconds
+}
+
 export default function ChatPage() {
   const [message, setMessage] = useState("");
-  const [chat, setChat] = useState<{ sender: string; text: string }[]>([]); // Typed chat state
+  const [chat, setChat] = useState<ChatMessage[]>([]); // Typed chat state with responseTime
   const [isLoading, setIsLoading] = useState(false);
   const [models, setModels] = useState<Model[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('');
-  const [modelsLoading, setModelsLoading] = useState<boolean>(true); // New state for models loading
-  const [modelsError, setModelsError] = useState<string | null>(null); // New state for models error
+  const [modelsLoading, setModelsLoading] = useState<boolean>(true);
+  const [modelsError, setModelsError] = useState<string | null>(null);
 
-  const chatContainerRef = useRef<HTMLDivElement>(null); // Typed ref
+  const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  // Dark mode state and toggle from the Home component
+  // Dark mode state and toggle
   const [isDarkMode, setIsDarkMode] = useState(true);
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 }); // For mouse follower
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
 
   // Effect for mouse follower
   useEffect(() => {
@@ -49,14 +56,13 @@ export default function ChatPage() {
       setModelsLoading(true);
       setModelsError(null);
       try {
-        const response = await axios.get('/api/models'); // Using axios
+        const response = await axios.get('/api/models');
         const data: Model[] = response.data;
         setModels(data);
-        // if (data.length > 0) {
-        //   // Set a default model, preferring 'gemma'
-        //   const defaultGeminiPro = data.find(m => m.name === 'models/gemma');
-        //   setSelectedModel(defaultGeminiPro ? defaultGeminiPro.name : data[0].name);
-        // }
+        if (data.length > 0) {
+          // Set a default model
+          setSelectedModel(data[0].name);
+        }
       } catch (e: any) {
         console.error('Failed to fetch models:', e);
         setModelsError(`Failed to fetch models: ${e.message}`);
@@ -71,24 +77,29 @@ export default function ChatPage() {
     setIsDarkMode(!isDarkMode);
   };
 
-  const sendMessage = async (e: FormEvent) => { // Accept FormEvent for consistency
-    e.preventDefault(); // Prevent default form submission behavior
+  const sendMessage = async (e: FormEvent) => {
+    e.preventDefault();
 
     if (!message.trim() || isLoading || !selectedModel) return;
 
-    const userMessage = { sender: "user", text: message.trim() };
+    const userMessage: ChatMessage = { sender: "user", text: message.trim() };
     const newChat = [...chat, userMessage];
     setChat(newChat);
     setMessage("");
     setIsLoading(true);
 
+    const startTime = performance.now(); // Start timer
+
     try {
       const res = await axios.post("/api/chat", {
         message: userMessage.text,
-        model: selectedModel
+        modelName: selectedModel // Ensure this matches your API route's expectation
       });
-      setChat([...newChat, { sender: "bot", text: res.data.reply }]);
-    } catch (err: any) { // Type err as any
+      const endTime = performance.now(); // End timer
+      const duration = endTime - startTime; // Calculate duration
+
+      setChat([...newChat, { sender: "bot", text: res.data.reply, responseTime: duration }]);
+    } catch (err: any) {
       console.error(err);
       setChat([...newChat, { sender: "bot", text: `Sorry, I encountered an error: ${err.response?.data?.error || err.message}. Please try again.` }]);
     } finally {
@@ -96,7 +107,7 @@ export default function ChatPage() {
     }
   };
 
-  // Theme classes inspired by the Home component
+  // Theme classes
   const themeClasses = {
     background: isDarkMode
       ? "bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900"
@@ -113,7 +124,6 @@ export default function ChatPage() {
     inputBg: isDarkMode ? "bg-gray-700" : "bg-gray-100",
     inputBorder: isDarkMode ? "border-gray-700" : "border-gray-200",
     inputTextColor: isDarkMode ? "text-gray-200" : "text-gray-800",
-    // Specific for chat bubbles
     botBubbleBg: isDarkMode ? "bg-gray-800" : "bg-white",
     botBubbleText: isDarkMode ? "text-gray-200" : "text-gray-800",
     dropdownBg: isDarkMode ? "bg-gray-700" : "bg-white",
@@ -189,7 +199,7 @@ export default function ChatPage() {
       {/* Chat Container */}
       <div
         ref={chatContainerRef}
-        className="relative z-20 flex-1 overflow-y-auto pt-4 pb-28 px-4 md:px-6 space-y-6" // Adjusted padding
+        className="relative z-20 flex-1 overflow-y-auto pt-4 pb-28 px-4 md:px-6 space-y-6"
       >
         {chat.length === 0 && (
           <div className={`text-center ${themeClasses.textMuted} mt-10 text-lg md:text-xl font-medium`}>
@@ -198,7 +208,7 @@ export default function ChatPage() {
           </div>
         )}
 
-        {chat.map((message, i) => ( // Removed any type here, using typed state
+        {chat.map((message, i) => (
           <div
             key={i}
             className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}
@@ -210,6 +220,11 @@ export default function ChatPage() {
                 }`}
             >
               <p className="whitespace-pre-wrap text-sm md:text-base">{message.text}</p>
+              {message.sender === "bot" && message.responseTime !== undefined && (
+                <span className={`block text-right text-xs mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  ({message.responseTime.toFixed(2)} ms)
+                </span>
+              )}
             </div>
           </div>
         ))}
@@ -239,7 +254,7 @@ export default function ChatPage() {
             disabled={isLoading || modelsLoading || !selectedModel}
           />
           <button
-            type="submit" // Changed to type="submit" for form
+            type="submit"
             disabled={isLoading || !message.trim() || modelsLoading || !selectedModel}
             className="rounded-full px-4 md:px-6 py-2 md:py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold hover:from-blue-600 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 flex items-center justify-center text-sm md:text-base"
           >
