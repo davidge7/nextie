@@ -16,7 +16,7 @@ export async function GET() {
 
     const data = await resp.json();
     const allModels = data.models || [];  // the field is likely `models`
-    const creatableModels = allModels.filter((model: any) =>
+    const creatableModels = allModels.filter((model: { supportedGenerationMethods: string | string[]; }) =>
       model.supportedGenerationMethods?.includes('generateContent')
     );
 

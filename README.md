@@ -1,30 +1,40 @@
-# Next.js Chat Application with Gemini AI
+# Nextie - AI-Powered Development Suite
 
-A modern chat application built with Next.js 13+ that integrates with Google's Gemini AI API to provide intelligent responses.
+A modern development suite built with Next.js 14 that combines multiple AI-powered tools to enhance developer productivity.
 
-## Features
+## Core Features
 
-- 🚀 Built with Next.js 13+ App Router
-- 🤖 Integration with Google's Gemini AI
-- 🎨 Dark/Light mode support
-- ⚡ Real-time chat interface
-- 🔒 Secure API handling
-- 📱 Responsive design
+### 🤖 AI Chat Assistant
+- Real-time chat interface with Gemini AI
+- Support for multiple AI models
+- Response time tracking
+- Dark/Light mode with smooth transitions
+- Animated backgrounds and mouse follower effects
+- Sleek, modern UI with Tailwind CSS
 
-## Prerequisites
+### 📝 Code Reviewer
+- AI-powered code analysis using Gemini
+- Support for multiple programming languages
+- GitHub repository integration
+- Severity-based feedback categorization
+- Real-time code analysis
+- Detailed suggestions with line references
 
-- Node.js 18.x or later
-- npm or yarn package manager
-- Google Gemini API key
+### 🎨 Design Features
+- Responsive design for all screen sizes
+- Dynamic theme switching
+- Glassmorphism effects
+- Animated UI elements
+- Interactive components
 
-## Environment Setup
+## Tech Stack
 
-Create a `.env` file in the root directory with the following variables:
-
-```env
-GEMINI_API_KEY=your_api_key_here
-GEMINI_API_BASE_URL=https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent
-```
+- **Framework**: Next.js 14 (App Router)
+- **UI**: Tailwind CSS, Lucide Icons
+- **AI Integration**: Google Gemini AI
+- **HTTP Client**: Axios
+- **Language**: TypeScript
+- **Development**: ESLint, PostCSS
 
 ## Project Structure
 

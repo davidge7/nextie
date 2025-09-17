@@ -44,7 +44,7 @@ async function fetchCodeFromGitHub(
     try {
       // FIX: Replaced Buffer with atob to resolve "Cannot find name 'Buffer'" TypeScript error.
       return atob(data.content);
-    } catch (e) {
+    } catch {
       throw new Error("Failed to decode file content from Base64.");
     }
   } else {
