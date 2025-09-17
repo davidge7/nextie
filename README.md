@@ -1,36 +1,167 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Next.js Chat Application with Gemini AI
 
-## Getting Started
+A modern chat application built with Next.js 13+ that integrates with Google's Gemini AI API to provide intelligent responses.
 
-First, run the development server:
+## Features
 
+- 🚀 Built with Next.js 13+ App Router
+- 🤖 Integration with Google's Gemini AI
+- 🎨 Dark/Light mode support
+- ⚡ Real-time chat interface
+- 🔒 Secure API handling
+- 📱 Responsive design
+
+## Prerequisites
+
+- Node.js 18.x or later
+- npm or yarn package manager
+- Google Gemini API key
+
+## Environment Setup
+
+Create a `.env` file in the root directory with the following variables:
+
+```env
+GEMINI_API_KEY=your_api_key_here
+GEMINI_API_BASE_URL=https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent
+```
+
+## Project Structure
+
+```
+```
+├── 📄 eslint.config.mjs
+├── 🟨 next-env.d.ts
+├── 🟨 next.config.ts
+├── 🗂️ package-lock.json
+├── 🗂️ package.json
+├── 📄 postcss.config.mjs
+├── 📁 public
+│ ├── 🖼️ file.svg
+│ ├── 🖼️ globe.svg
+│ ├── 🖼️ next.svg
+│ ├── 🖼️ vercel.svg
+│ ├── 🖼️ window.svg
+├── 📜 README.md
+├── 📁 src
+│ ├── 📁 app
+│ │ ├── 📁 about
+│ │ │ ├── 🟦 page.tsx
+│ │ ├── 📁 api
+│ │ │ ├── 📁 chat
+│ │ │ │ ├── 🟨 route.ts
+│ │ │ ├── 📁 github
+│ │ │ │ ├── 🟨 route.ts
+│ │ │ ├── 📁 review
+│ │ │ │ ├── 🟨 route.ts
+│ │ ├── 📁 blog
+│ │ │ ├── 🟦 page.tsx
+│ │ ├── 📁 chat
+│ │ │ ├── 🟦 page.tsx
+│ │ ├── 📁 code-reviewer
+│ │ │ ├── 🟦 page.tsx
+│ │ ├── 📁 contact
+│ │ │ ├── 🟦 page.tsx
+│ │ ├── 📄 favicon.ico
+│ │ ├── 🖼️ favicon.png
+│ │ ├── 🎨 globals.css
+│ │ ├── 🟦 layout.tsx
+│ │ ├── 🟦 page.tsx
+│ ├── 📁 components
+│ │ ├── 🟦 CodeInput.tsx
+│ │ ├── 🟦 ErrorMessage.tsx
+│ │ ├── 🟦 Loader.tsx
+│ │ ├── 🟦 ReviewOutput.tsx
+│ │ ├── 🟦 SuggestionCard.tsx
+│ ├── 📁 lib
+│ │ ├── 🟨 constants.ts
+│ │ ├── 🟨 types.ts
+├── 🗂️ tsconfig.json
+
+```
+```
+
+## Installation
+
+1. Clone the repository:
+```bash
+git clone <repository-url>
+cd nextie
+```
+
+2. Install dependencies:
+```bash
+npm install
+# or
+yarn install
+```
+
+3. Start the development server:
 ```bash
 npm run dev
 # or
 yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+4. Open [http://localhost:3000](http://localhost:3000) in your browser
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## API Routes
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### POST /api/chat
+Handles chat messages and communicates with Gemini AI.
 
-## Learn More
+Request body:
+```json
+{
+  "message": "Your message here"
+}
+```
 
-To learn more about Next.js, take a look at the following resources:
+Response:
+```json
+{
+  "reply": "AI response here"
+}
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Technologies Used
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Next.js 13+
+- React
+- Axios
+- Google Gemini AI
+- Environment Variables
+- TypeScript/JavaScript
 
-## Deploy on Vercel
+## Development
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+To contribute to this project:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
+
+## Security Considerations
+
+- Never commit your `.env` file
+- Keep your API keys secure
+- Use environment variables for sensitive data
+
+## License
+
+MIT License - feel free to use this project for your own purposes.
+
+## Support
+
+For issues and feature requests, please create an issue in the repository.
+
+## Acknowledgments
+
+- Next.js team for the fantastic framework
+- Google for the Gemini AI API
+- Contributors and maintainers
+
+---
+
+Created with ♥ using [Next.js](https://nextjs.org)
