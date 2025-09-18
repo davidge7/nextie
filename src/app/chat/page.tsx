@@ -28,7 +28,7 @@ export default function ChatPage() {
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [modelsLoading, setModelsLoading] = useState<boolean>(true);
   const [modelsError, setModelsError] = useState<string | null>(null);
-  const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | string >('');
+  const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | string>('');
   // Timer states
   const [currentTimer, setCurrentTimer] = useState<number>(0);
   const [timerInterval, setTimerInterval] = useState<NodeJS.Timeout | null>(null);
@@ -106,7 +106,7 @@ export default function ChatPage() {
     }
   };
 
-  const copyToClipboard = async (text: string, index: number | string) => {
+  const copyToClipboard = async (text: string, index: number) => {
     try {
       await navigator.clipboard.writeText(text);
       setCopiedMessageIndex(index);
@@ -199,19 +199,7 @@ export default function ChatPage() {
     successBg: isDarkMode ? "bg-green-900/20 border-green-800/30" : "bg-green-50/80 border-green-200/50",
   };
 
-  const MarkdownRenderer = ({
-  content,
-  copyToClipboard,
-  copiedMessageIndex,
-  isDarkMode,
-    themeClasses
-  }: {
-    content: string;
-    copyToClipboard: (text: string, index: number | string) => void;
-    copiedMessageIndex: number | string | null;
-    isDarkMode: boolean;
-    themeClasses: any;
-}) => {
+  const MarkdownRenderer = ({ content }: { content: string }) => {
     const renderContent = () => {
       const lines = content.split('\n');
       const elements: JSX.Element[] = [];
@@ -230,20 +218,10 @@ export default function ChatPage() {
                     {codeLanguage || 'code'}
                   </span>
                   <button
-                    onClick={() => copyToClipboard(codeContent.trim(), `code-${index}`)}
-                    className={`flex items-center space-x-1 text-xs px-2 py-1 rounded ${themeClasses.textMuted} hover:${themeClasses.text} transition-colors`}
+                    onClick={() => copyToClipboard(codeContent, index)}
+                    className={`text-xs px-2 py-1 rounded ${themeClasses.textMuted} hover:${themeClasses.text} transition-colors`}
                   >
-                    {copiedMessageIndex === `code-${index}` ? (
-                      <>
-                        <Check className="w-3 h-3" />
-                        <span>Copied!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3 h-3" />
-                        <span>Copy</span>
-                      </>
-                    )}
+                    {copiedMessageIndex === index ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                   </button>
                 </div>
                 <pre className={`p-4 text-sm whitespace-pre-wrap break-words ${themeClasses.text}`}>
@@ -292,8 +270,8 @@ export default function ChatPage() {
             <h3 key={index} className={`font-semibold text-lg mt-4 mb-2 ${themeClasses.text}`}>
               {line.replace('### ', '')}
             </h3>
-            );
-          }
+          );
+        }
         // Handle bullet points
         else if (line.startsWith('- ')) {
           elements.push(
@@ -380,7 +358,7 @@ export default function ChatPage() {
     };
 
     return <div className="prose prose-sm max-w-none">{renderContent()}</div>;
-};
+  };
 
   return (
     <div className={`flex flex-col h-screen relative overflow-hidden transition-all duration-700 ${themeClasses.background}`}>
@@ -500,8 +478,8 @@ export default function ChatPage() {
             <div className={`flex max-w-[85%] md:max-w-[75%] ${message.sender === "user" ? "flex-row-reverse" : "flex-row"} items-start space-x-3`}>
               {/* Avatar */}
               <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${message.sender === "user"
-                ? "bg-gradient-to-r from-blue-500 to-purple-600 ml-3"
-                : `${message.isError ? themeClasses.errorBg : themeClasses.botBubbleBg} border ${message.isError ? 'border-red-500/30' : themeClasses.border} mr-3`
+                  ? "bg-gradient-to-r from-blue-500 to-purple-600 ml-3"
+                  : `${message.isError ? themeClasses.errorBg : themeClasses.botBubbleBg} border ${message.isError ? 'border-red-500/30' : themeClasses.border} mr-3`
                 }`}>
                 {message.sender === "user" ? (
                   <User className="w-4 h-4 text-white" />
@@ -514,10 +492,10 @@ export default function ChatPage() {
               <div className="flex-1 min-w-0">
                 <div
                   className={`rounded-2xl px-4 py-3 ${message.sender === "user"
-                    ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg"
-                    : message.isError
-                      ? `${themeClasses.errorBg} border shadow-md backdrop-blur-sm`
-                      : `${themeClasses.botBubbleBg} ${themeClasses.botBubbleText} shadow-md backdrop-blur-sm border ${themeClasses.border}`
+                      ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg"
+                      : message.isError
+                        ? `${themeClasses.errorBg} border shadow-md backdrop-blur-sm`
+                        : `${themeClasses.botBubbleBg} ${themeClasses.botBubbleText} shadow-md backdrop-blur-sm border ${themeClasses.border}`
                     }`}
                 >
                   {/* Message Header for Bot */}
@@ -557,13 +535,8 @@ export default function ChatPage() {
                     {message.sender === "user" ? (
                       <p>{message.text}</p>
                     ) : (
-                      <MarkdownRenderer
-                        content={message.text}
-                        copyToClipboard={copyToClipboard}
-                        copiedMessageIndex={copiedMessageIndex}
-                        isDarkMode={isDarkMode}
-                        themeClasses={themeClasses}
-                      />)}
+                      <MarkdownRenderer content={message.text} />
+                    )}
                   </div>
 
                   {/* Timestamp for user messages */}
