@@ -28,7 +28,7 @@ export default function ChatPage() {
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [modelsLoading, setModelsLoading] = useState<boolean>(true);
   const [modelsError, setModelsError] = useState<string | null>(null);
-  const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | string | null>(null);
+  const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | string >('');
   // Timer states
   const [currentTimer, setCurrentTimer] = useState<number>(0);
   const [timerInterval, setTimerInterval] = useState<NodeJS.Timeout | null>(null);
@@ -106,15 +106,15 @@ export default function ChatPage() {
     }
   };
 
-const copyToClipboard = async (text: string, index: number | string) => {
-  try {
-    await navigator.clipboard.writeText(text);
-    setCopiedMessageIndex(index);
-    setTimeout(() => setCopiedMessageIndex(null), 2000);
-  } catch (err) {
-    console.error('Failed to copy text: ', err);
-  }
-};
+  const copyToClipboard = async (text: string, index: number | string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedMessageIndex(index);
+      setTimeout(() => setCopiedMessageIndex(''), 2000);
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+    }
+  };
 
   const sendMessage = async (e: React.FormEvent | React.MouseEvent) => {
     e.preventDefault();
@@ -200,10 +200,10 @@ const copyToClipboard = async (text: string, index: number | string) => {
   };
 
   const MarkdownRenderer = ({
-    content,
-    copyToClipboard,
-    copiedMessageIndex,
-    isDarkMode,
+  content,
+  copyToClipboard,
+  copiedMessageIndex,
+  isDarkMode,
     themeClasses
   }: {
     content: string;
@@ -211,7 +211,7 @@ const copyToClipboard = async (text: string, index: number | string) => {
     copiedMessageIndex: number | string | null;
     isDarkMode: boolean;
     themeClasses: any;
-  }) => {
+}) => {
     const renderContent = () => {
       const lines = content.split('\n');
       const elements: JSX.Element[] = [];
@@ -292,8 +292,8 @@ const copyToClipboard = async (text: string, index: number | string) => {
             <h3 key={index} className={`font-semibold text-lg mt-4 mb-2 ${themeClasses.text}`}>
               {line.replace('### ', '')}
             </h3>
-          );
-        }
+            );
+          }
         // Handle bullet points
         else if (line.startsWith('- ')) {
           elements.push(
@@ -380,7 +380,7 @@ const copyToClipboard = async (text: string, index: number | string) => {
     };
 
     return <div className="prose prose-sm max-w-none">{renderContent()}</div>;
-  };
+};
 
   return (
     <div className={`flex flex-col h-screen relative overflow-hidden transition-all duration-700 ${themeClasses.background}`}>
