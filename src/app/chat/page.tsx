@@ -28,8 +28,7 @@ export default function ChatPage() {
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [modelsLoading, setModelsLoading] = useState<boolean>(true);
   const [modelsError, setModelsError] = useState<string | null>(null);
-  const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null);
-
+  const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | string | null>(null);
   // Timer states
   const [currentTimer, setCurrentTimer] = useState<number>(0);
   const [timerInterval, setTimerInterval] = useState<NodeJS.Timeout | null>(null);
@@ -107,23 +106,23 @@ export default function ChatPage() {
     }
   };
 
-  const copyToClipboard = async (text: string, index: number) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedMessageIndex(index);
-      setTimeout(() => setCopiedMessageIndex(null), 2000);
-    } catch (err) {
-      console.error('Failed to copy text: ', err);
-    }
-  };
+const copyToClipboard = async (text: string, index: number | string) => {
+  try {
+    await navigator.clipboard.writeText(text);
+    setCopiedMessageIndex(index);
+    setTimeout(() => setCopiedMessageIndex(null), 2000);
+  } catch (err) {
+    console.error('Failed to copy text: ', err);
+  }
+};
 
   const sendMessage = async (e: React.FormEvent | React.MouseEvent) => {
     e.preventDefault();
 
     if (!message.trim() || isLoading || !selectedModel) return;
 
-    const userMessage: ChatMessage = { 
-      sender: "user", 
+    const userMessage: ChatMessage = {
+      sender: "user",
       text: message.trim(),
       timestamp: new Date()
     };
@@ -142,7 +141,7 @@ export default function ChatPage() {
         message: userMessage.text,
         modelName: selectedModel
       });
-      
+
       const endTime = performance.now();
       const duration = endTime - startTime;
 
@@ -150,8 +149,8 @@ export default function ChatPage() {
 
       setChat([...newChat, {
         sender: "bot",
-        text: res.data.reply, 
-        responseTime: duration 
+        text: res.data.reply,
+        responseTime: duration
       }]);
     } catch (err: any) {
       stopTimer();
@@ -200,7 +199,19 @@ export default function ChatPage() {
     successBg: isDarkMode ? "bg-green-900/20 border-green-800/30" : "bg-green-50/80 border-green-200/50",
   };
 
-  const MarkdownRenderer = ({ content }: { content: string }) => {
+  const MarkdownRenderer = ({
+    content,
+    copyToClipboard,
+    copiedMessageIndex,
+    isDarkMode,
+    themeClasses
+  }: {
+    content: string;
+    copyToClipboard: (text: string, index: number | string) => void;
+    copiedMessageIndex: number | string | null;
+    isDarkMode: boolean;
+    themeClasses: any;
+  }) => {
     const renderContent = () => {
       const lines = content.split('\n');
       const elements: JSX.Element[] = [];
@@ -219,14 +230,24 @@ export default function ChatPage() {
                     {codeLanguage || 'code'}
                   </span>
                   <button
-                    onClick={() => copyToClipboard(codeContent, index)}
-                    className={`text-xs px-2 py-1 rounded ${themeClasses.textMuted} hover:${themeClasses.text} transition-colors`}
+                    onClick={() => copyToClipboard(codeContent.trim(), `code-${index}`)}
+                    className={`flex items-center space-x-1 text-xs px-2 py-1 rounded ${themeClasses.textMuted} hover:${themeClasses.text} transition-colors`}
                   >
-                    {copiedMessageIndex === index ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    {copiedMessageIndex === `code-${index}` ? (
+                      <>
+                        <Check className="w-3 h-3" />
+                        <span>Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3" />
+                        <span>Copy</span>
+                      </>
+                    )}
                   </button>
                 </div>
-                <pre className={`p-4 text-sm overflow-x-auto ${themeClasses.text}`}>
-                  <code>{codeContent}</code>
+                <pre className={`p-4 text-sm whitespace-pre-wrap break-words ${themeClasses.text}`}>
+                  <code className="block leading-relaxed">{codeContent}</code>
                 </pre>
               </div>
             );
@@ -307,15 +328,15 @@ export default function ChatPage() {
         // Handle inline code
         else if (line.includes('`') && !line.startsWith('```')) {
           const parts = line.split('`');
-          const processedParts = parts.map((part, i) => 
+          const processedParts = parts.map((part, i) =>
             i % 2 === 1 ? (
-              <code key={i} className={`px-1.5 py-0.5 rounded text-sm ${isDarkMode ? 'bg-gray-700/60' : 'bg-gray-200/60'} font-mono`}>
+              <code key={i} className={`px-1.5 py-0.5 rounded text-sm ${isDarkMode ? 'bg-gray-700/60' : 'bg-gray-200/60'} font-mono break-words`}>
                 {part}
               </code>
             ) : part
           );
           elements.push(
-            <p key={index} className={`my-2 leading-relaxed ${themeClasses.text}`}>
+            <p key={index} className={`my-2 leading-relaxed ${themeClasses.text} break-words`}>
               {processedParts}
             </p>
           );
@@ -345,7 +366,7 @@ export default function ChatPage() {
           }
 
           elements.push(
-            <p key={index} className={`my-2 leading-relaxed ${themeClasses.text}`}>
+            <p key={index} className={`my-2 leading-relaxed ${themeClasses.text} break-words`}>
               {parts.length > 1 ? parts : line}
             </p>
           );
@@ -478,11 +499,10 @@ export default function ChatPage() {
           >
             <div className={`flex max-w-[85%] md:max-w-[75%] ${message.sender === "user" ? "flex-row-reverse" : "flex-row"} items-start space-x-3`}>
               {/* Avatar */}
-              <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                message.sender === "user" 
-                  ? "bg-gradient-to-r from-blue-500 to-purple-600 ml-3" 
-                  : `${message.isError ? themeClasses.errorBg : themeClasses.botBubbleBg} border ${message.isError ? 'border-red-500/30' : themeClasses.border} mr-3`
-              }`}>
+              <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${message.sender === "user"
+                ? "bg-gradient-to-r from-blue-500 to-purple-600 ml-3"
+                : `${message.isError ? themeClasses.errorBg : themeClasses.botBubbleBg} border ${message.isError ? 'border-red-500/30' : themeClasses.border} mr-3`
+                }`}>
                 {message.sender === "user" ? (
                   <User className="w-4 h-4 text-white" />
                 ) : (
@@ -493,13 +513,12 @@ export default function ChatPage() {
               {/* Message Content */}
               <div className="flex-1 min-w-0">
                 <div
-                  className={`rounded-2xl px-4 py-3 ${
-                    message.sender === "user"
-                      ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg"
-                      : message.isError
+                  className={`rounded-2xl px-4 py-3 ${message.sender === "user"
+                    ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg"
+                    : message.isError
                       ? `${themeClasses.errorBg} border shadow-md backdrop-blur-sm`
                       : `${themeClasses.botBubbleBg} ${themeClasses.botBubbleText} shadow-md backdrop-blur-sm border ${themeClasses.border}`
-                  }`}
+                    }`}
                 >
                   {/* Message Header for Bot */}
                   {message.sender === "bot" && (
@@ -538,8 +557,13 @@ export default function ChatPage() {
                     {message.sender === "user" ? (
                       <p>{message.text}</p>
                     ) : (
-                      <MarkdownRenderer content={message.text} />
-                    )}
+                      <MarkdownRenderer
+                        content={message.text}
+                        copyToClipboard={copyToClipboard}
+                        copiedMessageIndex={copiedMessageIndex}
+                        isDarkMode={isDarkMode}
+                        themeClasses={themeClasses}
+                      />)}
                   </div>
 
                   {/* Timestamp for user messages */}
