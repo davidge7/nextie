@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, JSX } from "react";
 import axios from "axios";
-import { Sparkles, Sun, Moon, ArrowRight, Clock, Zap, AlertCircle } from 'lucide-react';
+import { Sparkles, Sun, Moon, ArrowRight, Clock, Zap, AlertCircle, Bot, Check, Copy, User } from 'lucide-react';
 
 interface Model {
   name: string;
@@ -16,6 +16,8 @@ interface ChatMessage {
   sender: string;
   text: string;
   responseTime?: number;
+  timestamp?: Date;
+  isError?: boolean;
 }
 
 export default function ChatPage() {
@@ -26,6 +28,7 @@ export default function ChatPage() {
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [modelsLoading, setModelsLoading] = useState<boolean>(true);
   const [modelsError, setModelsError] = useState<string | null>(null);
+  const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null);
 
   // Timer states
   const [currentTimer, setCurrentTimer] = useState<number>(0);
@@ -104,17 +107,31 @@ export default function ChatPage() {
     }
   };
 
+  const copyToClipboard = async (text: string, index: number) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedMessageIndex(index);
+      setTimeout(() => setCopiedMessageIndex(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+    }
+  };
+
   const sendMessage = async (e: React.FormEvent | React.MouseEvent) => {
     e.preventDefault();
 
     if (!message.trim() || isLoading || !selectedModel) return;
 
-    const userMessage: ChatMessage = { sender: "user", text: message.trim() };
+    const userMessage: ChatMessage = { 
+      sender: "user", 
+      text: message.trim(),
+      timestamp: new Date()
+    };
     const newChat = [...chat, userMessage];
     setChat(newChat);
     setMessage("");
     setIsLoading(true);
-    
+
     // Start the live timer
     startTimer();
 
@@ -130,23 +147,30 @@ export default function ChatPage() {
       const duration = endTime - startTime;
 
       stopTimer();
-      
-      setChat([...newChat, { 
-        sender: "bot", 
+
+      setChat([...newChat, {
+        sender: "bot",
         text: res.data.reply, 
         responseTime: duration 
       }]);
     } catch (err: any) {
       stopTimer();
       console.error(err);
-      setChat([...newChat, { 
-        sender: "bot", 
-        text: `Sorry, I encountered an error: ${err.response?.data?.error || err.message}. Please try again.`
+      setChat([...newChat, {
+        sender: "bot",
+        text: `I apologize, but I encountered an error while processing your request. Please try again.`,
+        responseTime: performance.now() - startTime,
+        timestamp: new Date(),
+        isError: true
       }]);
     } finally {
       setIsLoading(false);
       setCurrentTimer(0);
     }
+  };
+
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   // Theme classes with sleeker design
@@ -171,6 +195,170 @@ export default function ChatPage() {
     dropdownBg: isDarkMode ? "bg-gray-900/60" : "bg-white/80",
     dropdownBorder: isDarkMode ? "border-gray-700/50" : "border-gray-300/50",
     dropdownText: isDarkMode ? "text-gray-100" : "text-gray-900",
+    errorBg: isDarkMode ? "bg-red-900/20 border-red-800/30" : "bg-red-50/80 border-red-200/50",
+    errorText: isDarkMode ? "text-red-300" : "text-red-700",
+    successBg: isDarkMode ? "bg-green-900/20 border-green-800/30" : "bg-green-50/80 border-green-200/50",
+  };
+
+  const MarkdownRenderer = ({ content }: { content: string }) => {
+    const renderContent = () => {
+      const lines = content.split('\n');
+      const elements: JSX.Element[] = [];
+      let inCodeBlock = false;
+      let codeContent = '';
+      let codeLanguage = '';
+
+      lines.forEach((line, index) => {
+        if (line.startsWith('```')) {
+          if (inCodeBlock) {
+            // End of code block
+            elements.push(
+              <div key={`code-${index}`} className={`my-4 rounded-lg ${isDarkMode ? 'bg-gray-900/60' : 'bg-gray-100/80'} border ${themeClasses.border} overflow-hidden`}>
+                <div className={`flex items-center justify-between px-4 py-2 ${isDarkMode ? 'bg-gray-800/60' : 'bg-gray-50/80'} border-b ${themeClasses.border}`}>
+                  <span className={`text-xs font-mono ${themeClasses.textMuted}`}>
+                    {codeLanguage || 'code'}
+                  </span>
+                  <button
+                    onClick={() => copyToClipboard(codeContent, index)}
+                    className={`text-xs px-2 py-1 rounded ${themeClasses.textMuted} hover:${themeClasses.text} transition-colors`}
+                  >
+                    {copiedMessageIndex === index ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                  </button>
+                </div>
+                <pre className={`p-4 text-sm overflow-x-auto ${themeClasses.text}`}>
+                  <code>{codeContent}</code>
+                </pre>
+              </div>
+            );
+            inCodeBlock = false;
+            codeContent = '';
+            codeLanguage = '';
+          } else {
+            // Start of code block
+            inCodeBlock = true;
+            codeLanguage = line.replace('```', '');
+          }
+          return;
+        }
+
+        if (inCodeBlock) {
+          codeContent += line + '\n';
+          return;
+        }
+
+        // Handle headers
+        if (line.startsWith('**') && line.endsWith('**')) {
+          const text = line.replace(/\*\*/g, '');
+          elements.push(
+            <h3 key={index} className={`font-semibold text-lg mt-4 mb-2 ${themeClasses.text}`}>
+              {text}
+            </h3>
+          );
+        } else if (line.startsWith('# ')) {
+          elements.push(
+            <h1 key={index} className={`font-bold text-2xl mt-6 mb-3 ${themeClasses.text}`}>
+              {line.replace('# ', '')}
+            </h1>
+          );
+        } else if (line.startsWith('## ')) {
+          elements.push(
+            <h2 key={index} className={`font-semibold text-xl mt-5 mb-2 ${themeClasses.text}`}>
+              {line.replace('## ', '')}
+            </h2>
+          );
+        } else if (line.startsWith('### ')) {
+          elements.push(
+            <h3 key={index} className={`font-semibold text-lg mt-4 mb-2 ${themeClasses.text}`}>
+              {line.replace('### ', '')}
+            </h3>
+          );
+        }
+        // Handle bullet points
+        else if (line.startsWith('- ')) {
+          elements.push(
+            <div key={index} className="flex items-start space-x-2 my-2">
+              <div className={`w-1.5 h-1.5 rounded-full ${isDarkMode ? 'bg-blue-400' : 'bg-blue-500'} mt-2 flex-shrink-0`} />
+              <span className={themeClasses.text}>{line.replace('- ', '')}</span>
+            </div>
+          );
+        }
+        // Handle numbered lists
+        else if (/^\d+\./.test(line)) {
+          const match = line.match(/^(\d+)\.\s*(.*)$/);
+          if (match) {
+            elements.push(
+              <div key={index} className="flex items-start space-x-3 my-2">
+                <span className={`text-sm font-semibold ${isDarkMode ? 'text-blue-400' : 'text-blue-600'} mt-0.5 flex-shrink-0`}>
+                  {match[1]}.
+                </span>
+                <span className={themeClasses.text}>{match[2]}</span>
+              </div>
+            );
+          }
+        }
+        // Handle blockquotes
+        else if (line.startsWith('> ')) {
+          elements.push(
+            <div key={index} className={`border-l-4 ${isDarkMode ? 'border-blue-400' : 'border-blue-500'} pl-4 py-2 my-3 ${isDarkMode ? 'bg-blue-900/10' : 'bg-blue-50/50'} rounded-r-lg`}>
+              <p className={`italic ${themeClasses.textSecondary}`}>{line.replace('> ', '')}</p>
+            </div>
+          );
+        }
+        // Handle inline code
+        else if (line.includes('`') && !line.startsWith('```')) {
+          const parts = line.split('`');
+          const processedParts = parts.map((part, i) => 
+            i % 2 === 1 ? (
+              <code key={i} className={`px-1.5 py-0.5 rounded text-sm ${isDarkMode ? 'bg-gray-700/60' : 'bg-gray-200/60'} font-mono`}>
+                {part}
+              </code>
+            ) : part
+          );
+          elements.push(
+            <p key={index} className={`my-2 leading-relaxed ${themeClasses.text}`}>
+              {processedParts}
+            </p>
+          );
+        }
+        // Handle regular paragraphs
+        else if (line.trim()) {
+          // Handle bold text within paragraphs
+          const boldRegex = /\*\*(.*?)\*\*/g;
+          const parts = [];
+          let lastIndex = 0;
+          let match;
+
+          while ((match = boldRegex.exec(line)) !== null) {
+            if (match.index > lastIndex) {
+              parts.push(line.substring(lastIndex, match.index));
+            }
+            parts.push(
+              <strong key={match.index} className="font-semibold">
+                {match[1]}
+              </strong>
+            );
+            lastIndex = match.index + match[0].length;
+          }
+
+          if (lastIndex < line.length) {
+            parts.push(line.substring(lastIndex));
+          }
+
+          elements.push(
+            <p key={index} className={`my-2 leading-relaxed ${themeClasses.text}`}>
+              {parts.length > 1 ? parts : line}
+            </p>
+          );
+        } else {
+          // Empty line for spacing
+          elements.push(<div key={index} className="my-2" />);
+        }
+      });
+
+      return elements;
+    };
+
+    return <div className="prose prose-sm max-w-none">{renderContent()}</div>;
   };
 
   return (
@@ -269,7 +457,7 @@ export default function ChatPage() {
       {/* Chat Container */}
       <div
         ref={chatContainerRef}
-        className="relative z-20 flex-1 overflow-y-auto py-6 px-4 md:px-6 space-y-4"
+        className="relative z-20 flex-1 overflow-y-auto py-6 px-4 md:px-6 space-y-6"
       >
         {chat.length === 0 && (
           <div className={`text-center ${themeClasses.textMuted} mt-12`}>
@@ -286,35 +474,113 @@ export default function ChatPage() {
         {chat.map((message, i) => (
           <div
             key={i}
-            className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"} mb-4`}
+            className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"} group`}
           >
-            <div
-              className={`max-w-[80%] md:max-w-[60%] rounded-2xl px-4 py-3 ${
-                message.sender === "user"
-                  ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg"
-                  : `${themeClasses.botBubbleBg} ${themeClasses.botBubbleText} shadow-md backdrop-blur-sm border ${themeClasses.border}`
-              }`}
-            >
-              <p className="text-sm md:text-base leading-relaxed">{message.text}</p>
-              {message.sender === "bot" && message.responseTime !== undefined && (
-                <div className="flex items-center justify-end mt-2 space-x-1">
-                  <Clock className={`w-3 h-3 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} />
-                  <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                    {(message.responseTime / 1000).toFixed(2)}s
-                  </span>
+            <div className={`flex max-w-[85%] md:max-w-[75%] ${message.sender === "user" ? "flex-row-reverse" : "flex-row"} items-start space-x-3`}>
+              {/* Avatar */}
+              <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+                message.sender === "user" 
+                  ? "bg-gradient-to-r from-blue-500 to-purple-600 ml-3" 
+                  : `${message.isError ? themeClasses.errorBg : themeClasses.botBubbleBg} border ${message.isError ? 'border-red-500/30' : themeClasses.border} mr-3`
+              }`}>
+                {message.sender === "user" ? (
+                  <User className="w-4 h-4 text-white" />
+                ) : (
+                  <Bot className={`w-4 h-4 ${message.isError ? 'text-red-400' : 'text-blue-400'}`} />
+                )}
+              </div>
+
+              {/* Message Content */}
+              <div className="flex-1 min-w-0">
+                <div
+                  className={`rounded-2xl px-4 py-3 ${
+                    message.sender === "user"
+                      ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg"
+                      : message.isError
+                      ? `${themeClasses.errorBg} border shadow-md backdrop-blur-sm`
+                      : `${themeClasses.botBubbleBg} ${themeClasses.botBubbleText} shadow-md backdrop-blur-sm border ${themeClasses.border}`
+                  }`}
+                >
+                  {/* Message Header for Bot */}
+                  {message.sender === "bot" && (
+                    <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-200/20">
+                      <div className="flex items-center space-x-2">
+                        <span className={`text-xs font-medium ${message.isError ? themeClasses.errorText : 'text-blue-400'}`}>
+                          {message.isError ? 'Error Response' : 'AI Assistant'}
+                        </span>
+                        {message.responseTime && (
+                          <>
+                            <span className={`text-xs ${themeClasses.textMuted}`}>•</span>
+                            <span className={`text-xs ${themeClasses.textMuted}`}>
+                              {(message.responseTime / 1000).toFixed(2)}s
+                            </span>
+                          </>
+                        )}
+                      </div>
+                      <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => copyToClipboard(message.text, i)}
+                          className={`p-1.5 rounded-lg ${themeClasses.textMuted} hover:${themeClasses.text} hover:bg-gray-200/10 transition-all`}
+                          title="Copy message"
+                        >
+                          {copiedMessageIndex === i ? (
+                            <Check className="w-3 h-3 text-green-400" />
+                          ) : (
+                            <Copy className="w-3 h-3" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Message Text */}
+                  <div className="text-sm md:text-base leading-relaxed">
+                    {message.sender === "user" ? (
+                      <p>{message.text}</p>
+                    ) : (
+                      <MarkdownRenderer content={message.text} />
+                    )}
+                  </div>
+
+                  {/* Timestamp for user messages */}
+                  {message.sender === "user" && message.timestamp && (
+                    <div className="flex justify-end mt-2">
+                      <span className="text-xs text-white/70">
+                        {formatTime(message.timestamp)}
+                      </span>
+                    </div>
+                  )}
                 </div>
-              )}
+
+                {/* Bot message timestamp */}
+                {message.sender === "bot" && message.timestamp && (
+                  <div className="flex items-center justify-between mt-2 px-1">
+                    <span className={`text-xs ${themeClasses.textMuted}`}>
+                      {formatTime(message.timestamp)}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         ))}
 
         {isLoading && (
-          <div className="flex justify-start mb-4">
-            <div className={`${themeClasses.botBubbleBg} rounded-2xl px-4 py-3 shadow-md backdrop-blur-sm border ${themeClasses.border}`}>
-              <div className="flex space-x-1">
-                <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
-                <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce [animation-delay:0.2s]"></div>
-                <div className="w-2 h-2 bg-pink-400 rounded-full animate-bounce [animation-delay:0.4s]"></div>
+          <div className="flex justify-start group">
+            <div className="flex items-start space-x-3 max-w-[75%]">
+              <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${themeClasses.botBubbleBg} border ${themeClasses.border}`}>
+                <Bot className="w-4 h-4 text-blue-400" />
+              </div>
+              <div className={`${themeClasses.botBubbleBg} rounded-2xl px-4 py-3 shadow-md backdrop-blur-sm border ${themeClasses.border}`}>
+                <div className="flex items-center space-x-2 mb-2">
+                  <span className="text-xs font-medium text-blue-400">Nextie</span>
+                  <span className={`text-xs ${themeClasses.textMuted}`}>thinking...</span>
+                </div>
+                <div className="flex space-x-1">
+                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
+                  <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce [animation-delay:0.2s]"></div>
+                  <div className="w-2 h-2 bg-pink-400 rounded-full animate-bounce [animation-delay:0.4s]"></div>
+                </div>
               </div>
             </div>
           </div>
