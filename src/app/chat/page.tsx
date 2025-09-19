@@ -245,7 +245,8 @@ export default function ChatPage() {
     messageIndex: number;
   }) => {
     const renderContent = () => {
-      const lines = content.split('\n');
+      const safeContent = content ?? "";
+      const lines = safeContent.split("\n");
       const elements: JSX.Element[] = [];
       let inCodeBlock = false;
       let codeContent = '';
@@ -546,8 +547,11 @@ export default function ChatPage() {
                   {message.sender === "bot" && (
                     <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-200/20">
                       <div className="flex items-center space-x-2">
-                        <span className={`text-xs font-medium ${message.isError ? themeClasses.errorText : 'text-blue-400'}`}>
-                          {message.isError ? 'Error Response' : 'AI Assistant'}
+                        <span
+                          className={`text-xs font-medium ${message.isError ? themeClasses.errorText : "text-blue-400"
+                            }`}
+                        >
+                          {message.isError ? "Error Response" : "AI Assistant"}
                         </span>
                         {message.responseTime && (
                           <>
@@ -558,7 +562,9 @@ export default function ChatPage() {
                           </>
                         )}
                       </div>
+
                       <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {/* Copy Button */}
                         <button
                           onClick={() => copyToClipboard(message.text, i)}
                           className={`p-1.5 rounded-lg ${themeClasses.textMuted} hover:${themeClasses.text} hover:bg-gray-200/10 transition-all`}
@@ -570,6 +576,17 @@ export default function ChatPage() {
                             <Copy className="w-3 h-3" />
                           )}
                         </button>
+
+                        {/* Try Again Button (only on errors) */}
+                        {message.isError && message.retryText && (
+                          <button
+                            onClick={() => sendMessage(undefined, message.retryText)}
+                            className="p-1.5 rounded-lg text-red-400 hover:text-red-500 hover:bg-gray-200/10 transition-all"
+                            title="Try again"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}
