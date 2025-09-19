@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, JSX } from "react";
 import axios from "axios";
-import { Sparkles, Sun, Moon, ArrowRight, Clock, Zap, AlertCircle } from 'lucide-react';
+import { Sparkles, Sun, Moon, ArrowRight, Clock, Zap, AlertCircle, Bot, Check, Copy, User } from 'lucide-react';
+import { RefreshCw } from "lucide-react";
 
 interface Model {
   name: string;
@@ -16,6 +17,9 @@ interface ChatMessage {
   sender: string;
   text: string;
   responseTime?: number;
+  timestamp?: Date;
+  isError?: boolean;
+  retryText?: string;
 }
 
 export default function ChatPage() {
@@ -26,12 +30,13 @@ export default function ChatPage() {
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [modelsLoading, setModelsLoading] = useState<boolean>(true);
   const [modelsError, setModelsError] = useState<string | null>(null);
-
+  const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | string>('');
   // Timer states
   const [currentTimer, setCurrentTimer] = useState<number>(0);
   const [timerInterval, setTimerInterval] = useState<NodeJS.Timeout | null>(null);
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Dark mode state
   const [isDarkMode, setIsDarkMode] = useState(true);
@@ -104,49 +109,113 @@ export default function ChatPage() {
     }
   };
 
-  const sendMessage = async (e: React.FormEvent | React.MouseEvent) => {
-    e.preventDefault();
+  const copyToClipboard = async (text: string, index: number) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedMessageIndex(index);
+      setTimeout(() => setCopiedMessageIndex(''), 2000);
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+    }
+  };
 
-    if (!message.trim() || isLoading || !selectedModel) return;
+  const sendMessage = async (
+    e?: React.FormEvent | React.MouseEvent,
+    overrideText?: string
+  ) => {
+    if (e) e.preventDefault();
 
-    const userMessage: ChatMessage = { sender: "user", text: message.trim() };
+    const inputText = overrideText ?? message.trim();
+    if (!inputText || isLoading || !selectedModel) return;
+
+    const userMessage: ChatMessage = {
+      sender: "user",
+      text: inputText,
+      timestamp: new Date(),
+      retryText: inputText,
+    };
+
     const newChat = [...chat, userMessage];
     setChat(newChat);
-    setMessage("");
+    if (!overrideText) setMessage(""); // only clear input when it’s a fresh message
     setIsLoading(true);
-    
-    // Start the live timer
-    startTimer();
 
+    startTimer();
     const startTime = performance.now();
 
     try {
-      const res = await axios.post("/api/chat", {
-        message: userMessage.text,
-        modelName: selectedModel
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: userMessage.text,
+          modelName: selectedModel,
+        }),
+        signal: controller.signal,
       });
-      
-      const endTime = performance.now();
-      const duration = endTime - startTime;
+
+      if (!res.body) throw new Error("No response body");
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+
+      let botMessage = "";
+      setChat((prev) => [
+        ...prev,
+        { sender: "bot", text: "", timestamp: new Date(), retryText: inputText },
+      ]);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        botMessage += decoder.decode(value, { stream: true });
+
+        setChat((prev) => {
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            ...updated[updated.length - 1],
+            text: botMessage,
+            responseTime: performance.now() - startTime,
+            retryText: inputText,
+          };
+          return updated;
+        });
+      }
 
       stopTimer();
-      
-      setChat([...newChat, { 
-        sender: "bot", 
-        text: res.data.reply, 
-        responseTime: duration 
-      }]);
     } catch (err: any) {
+      if (err.name === "AbortError") {
+        console.log("Stream aborted by user");
+      } else {
+        console.error("Streaming error:", err);
+        setChat((prev) => [
+          ...prev,
+          {
+            sender: "bot",
+            text: `❌ Error while processing your request.`,
+            responseTime: performance.now() - startTime,
+            timestamp: new Date(),
+            isError: true,
+            retryText: inputText, // 🔑 save original text for retry
+          },
+        ]);
+      }
       stopTimer();
-      console.error(err);
-      setChat([...newChat, { 
-        sender: "bot", 
-        text: `Sorry, I encountered an error: ${err.response?.data?.error || err.message}. Please try again.`
-      }]);
     } finally {
+      abortControllerRef.current = null;
       setIsLoading(false);
       setCurrentTimer(0);
     }
+  };
+
+
+
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   // Theme classes with sleeker design
@@ -171,6 +240,177 @@ export default function ChatPage() {
     dropdownBg: isDarkMode ? "bg-gray-900/60" : "bg-white/80",
     dropdownBorder: isDarkMode ? "border-gray-700/50" : "border-gray-300/50",
     dropdownText: isDarkMode ? "text-gray-100" : "text-gray-900",
+    errorBg: isDarkMode ? "bg-red-900/20 border-red-800/30" : "bg-red-50/80 border-red-200/50",
+    errorText: isDarkMode ? "text-red-300" : "text-red-700",
+    successBg: isDarkMode ? "bg-green-900/20 border-green-800/30" : "bg-green-50/80 border-green-200/50",
+  };
+
+  const MarkdownRenderer = ({
+    content,
+    messageIndex,
+  }: {
+    content: string;
+    messageIndex: number;
+  }) => {
+    const renderContent = () => {
+      const safeContent = content ?? "";
+      const lines = safeContent.split("\n");
+      const elements: JSX.Element[] = [];
+      let inCodeBlock = false;
+      let codeContent = '';
+      let codeLanguage = '';
+
+      lines.forEach((line, index) => {
+        if (line.startsWith('```')) {
+          if (inCodeBlock) {
+            // End of code block
+            elements.push(
+              <div key={`code-${index}`} className={`my-4 rounded-lg ${isDarkMode ? 'bg-gray-900/60' : 'bg-gray-100/80'} border ${themeClasses.border} overflow-hidden`}>
+                <div className={`flex items-center justify-between px-4 py-2 ${isDarkMode ? 'bg-gray-800/60' : 'bg-gray-50/80'} border-b ${themeClasses.border}`}>
+                  <span className={`text-xs font-mono ${themeClasses.textMuted}`}>
+                    {codeLanguage || 'code'}
+                  </span>
+                  <button
+                    onClick={() => copyToClipboard(codeContent, messageIndex)}
+                    className={`text-xs px-2 py-1 rounded ${themeClasses.textMuted} hover:${themeClasses.text} transition-colors`}
+                  >
+                    {copiedMessageIndex === index ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                  </button>
+                </div>
+                <pre className={`p-4 text-sm whitespace-pre-wrap break-words ${themeClasses.text}`}>
+                  <code className="block leading-relaxed">{codeContent}</code>
+                </pre>
+              </div>
+            );
+            inCodeBlock = false;
+            codeContent = '';
+            codeLanguage = '';
+          } else {
+            // Start of code block
+            inCodeBlock = true;
+            codeLanguage = line.replace('```', '');
+          }
+          return;
+        }
+
+        if (inCodeBlock) {
+          codeContent += line + '\n';
+          return;
+        }
+
+        // Handle headers
+        if (line.startsWith('**') && line.endsWith('**')) {
+          const text = line.replace(/\*\*/g, '');
+          elements.push(
+            <h3 key={index} className={`font-semibold text-lg mt-4 mb-2 ${themeClasses.text}`}>
+              {text}
+            </h3>
+          );
+        } else if (line.startsWith('# ')) {
+          elements.push(
+            <h1 key={index} className={`font-bold text-2xl mt-6 mb-3 ${themeClasses.text}`}>
+              {line.replace('# ', '')}
+            </h1>
+          );
+        } else if (line.startsWith('## ')) {
+          elements.push(
+            <h2 key={index} className={`font-semibold text-xl mt-5 mb-2 ${themeClasses.text}`}>
+              {line.replace('## ', '')}
+            </h2>
+          );
+        } else if (line.startsWith('### ')) {
+          elements.push(
+            <h3 key={index} className={`font-semibold text-lg mt-4 mb-2 ${themeClasses.text}`}>
+              {line.replace('### ', '')}
+            </h3>
+          );
+        }
+        // Handle bullet points
+        else if (line.startsWith('- ')) {
+          elements.push(
+            <div key={index} className="flex items-start space-x-2 my-2">
+              <div className={`w-1.5 h-1.5 rounded-full ${isDarkMode ? 'bg-blue-400' : 'bg-blue-500'} mt-2 flex-shrink-0`} />
+              <span className={themeClasses.text}>{line.replace('- ', '')}</span>
+            </div>
+          );
+        }
+        // Handle numbered lists
+        else if (/^\d+\./.test(line)) {
+          const match = line.match(/^(\d+)\.\s*(.*)$/);
+          if (match) {
+            elements.push(
+              <div key={index} className="flex items-start space-x-3 my-2">
+                <span className={`text-sm font-semibold ${isDarkMode ? 'text-blue-400' : 'text-blue-600'} mt-0.5 flex-shrink-0`}>
+                  {match[1]}.
+                </span>
+                <span className={themeClasses.text}>{match[2]}</span>
+              </div>
+            );
+          }
+        }
+        // Handle blockquotes
+        else if (line.startsWith('> ')) {
+          elements.push(
+            <div key={index} className={`border-l-4 ${isDarkMode ? 'border-blue-400' : 'border-blue-500'} pl-4 py-2 my-3 ${isDarkMode ? 'bg-blue-900/10' : 'bg-blue-50/50'} rounded-r-lg`}>
+              <p className={`italic ${themeClasses.textSecondary}`}>{line.replace('> ', '')}</p>
+            </div>
+          );
+        }
+        // Handle inline code
+        else if (line.includes('`') && !line.startsWith('```')) {
+          const parts = line.split('`');
+          const processedParts = parts.map((part, i) =>
+            i % 2 === 1 ? (
+              <code key={i} className={`px-1.5 py-0.5 rounded text-sm ${isDarkMode ? 'bg-gray-700/60' : 'bg-gray-200/60'} font-mono break-words`}>
+                {part}
+              </code>
+            ) : part
+          );
+          elements.push(
+            <p key={index} className={`my-2 leading-relaxed ${themeClasses.text} break-words`}>
+              {processedParts}
+            </p>
+          );
+        }
+        // Handle regular paragraphs
+        else if (line.trim()) {
+          // Handle bold text within paragraphs
+          const boldRegex = /\*\*(.*?)\*\*/g;
+          const parts = [];
+          let lastIndex = 0;
+          let match;
+
+          while ((match = boldRegex.exec(line)) !== null) {
+            if (match.index > lastIndex) {
+              parts.push(line.substring(lastIndex, match.index));
+            }
+            parts.push(
+              <strong key={match.index} className="font-semibold">
+                {match[1]}
+              </strong>
+            );
+            lastIndex = match.index + match[0].length;
+          }
+
+          if (lastIndex < line.length) {
+            parts.push(line.substring(lastIndex));
+          }
+
+          elements.push(
+            <p key={index} className={`my-2 leading-relaxed ${themeClasses.text} break-words`}>
+              {parts.length > 1 ? parts : line}
+            </p>
+          );
+        } else {
+          // Empty line for spacing
+          elements.push(<div key={index} className="my-2" />);
+        }
+      });
+
+      return elements;
+    };
+
+    return <div className="prose prose-sm max-w-none">{renderContent()}</div>;
   };
 
   return (
@@ -269,7 +509,7 @@ export default function ChatPage() {
       {/* Chat Container */}
       <div
         ref={chatContainerRef}
-        className="relative z-20 flex-1 overflow-y-auto py-6 px-4 md:px-6 space-y-4"
+        className="relative z-20 flex-1 overflow-y-auto py-6 px-4 md:px-6 space-y-6"
       >
         {chat.length === 0 && (
           <div className={`text-center ${themeClasses.textMuted} mt-12`}>
@@ -286,35 +526,127 @@ export default function ChatPage() {
         {chat.map((message, i) => (
           <div
             key={i}
-            className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"} mb-4`}
+            className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"} group`}
           >
-            <div
-              className={`max-w-[80%] md:max-w-[60%] rounded-2xl px-4 py-3 ${
-                message.sender === "user"
-                  ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg"
-                  : `${themeClasses.botBubbleBg} ${themeClasses.botBubbleText} shadow-md backdrop-blur-sm border ${themeClasses.border}`
-              }`}
-            >
-              <p className="text-sm md:text-base leading-relaxed">{message.text}</p>
-              {message.sender === "bot" && message.responseTime !== undefined && (
-                <div className="flex items-center justify-end mt-2 space-x-1">
-                  <Clock className={`w-3 h-3 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} />
-                  <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                    {(message.responseTime / 1000).toFixed(2)}s
-                  </span>
+            <div className={`flex max-w-[85%] md:max-w-[75%] ${message.sender === "user" ? "flex-row-reverse" : "flex-row"} items-start space-x-3`}>
+              {/* Avatar */}
+              <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${message.sender === "user"
+                ? "bg-gradient-to-r from-blue-500 to-purple-600 ml-3"
+                : `${message.isError ? themeClasses.errorBg : themeClasses.botBubbleBg} border ${message.isError ? 'border-red-500/30' : themeClasses.border} mr-3`
+                }`}>
+                {message.sender === "user" ? (
+                  <User className="w-4 h-4 text-white" />
+                ) : (
+                  <Bot className={`w-4 h-4 ${message.isError ? 'text-red-400' : 'text-blue-400'}`} />
+                )}
+              </div>
+
+              {/* Message Content */}
+              <div className="flex-1 min-w-0">
+                <div
+                  className={`rounded-2xl px-4 py-3 ${message.sender === "user"
+                    ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg"
+                    : message.isError
+                      ? `${themeClasses.errorBg} border shadow-md backdrop-blur-sm`
+                      : `${themeClasses.botBubbleBg} ${themeClasses.botBubbleText} shadow-md backdrop-blur-sm border ${themeClasses.border}`
+                    }`}
+                >
+                  {/* Message Header for Bot */}
+                  {message.sender === "bot" && (
+                    <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-200/20">
+                      <div className="flex items-center space-x-2">
+                        <span
+                          className={`text-xs font-medium ${message.isError ? themeClasses.errorText : "text-blue-400"
+                            }`}
+                        >
+                          {message.isError ? "Error Response" : "AI Assistant"}
+                        </span>
+                        {message.responseTime && (
+                          <>
+                            <span className={`text-xs ${themeClasses.textMuted}`}>•</span>
+                            <span className={`text-xs ${themeClasses.textMuted}`}>
+                              {(message.responseTime / 1000).toFixed(2)}s
+                            </span>
+                          </>
+                        )}
+                      </div>
+
+                      <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {/* Copy Button */}
+                        <button
+                          onClick={() => copyToClipboard(message.text, i)}
+                          className={`p-1.5 rounded-lg ${themeClasses.textMuted} hover:${themeClasses.text} hover:bg-gray-200/10 transition-all`}
+                          title="Copy message"
+                        >
+                          {copiedMessageIndex === i ? (
+                            <Check className="w-3 h-3 text-green-400" />
+                          ) : (
+                            <Copy className="w-3 h-3" />
+                          )}
+                        </button>
+
+                        {/* Try Again Button  */}
+                        {
+                          <button
+                            onClick={() => sendMessage(undefined, message.retryText)}
+                            className="p-1.5 rounded-lg text-red-400 hover:text-red-500 hover:bg-gray-200/10 transition-all"
+                            title="Try again"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                          </button>
+                        }
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Message Text */}
+                  <div className="text-sm md:text-base leading-relaxed">
+                    {message.sender === "user" ? (
+                      <p>{message.text}</p>
+                    ) : (
+                      <MarkdownRenderer content={message.text} messageIndex={i} />
+                    )}
+                  </div>
+
+                  {/* Timestamp for user messages */}
+                  {message.sender === "user" && message.timestamp && (
+                    <div className="flex justify-end mt-2">
+                      <span className="text-xs text-white/70">
+                        {formatTime(message.timestamp)}
+                      </span>
+                    </div>
+                  )}
                 </div>
-              )}
+
+                {/* Bot message timestamp */}
+                {message.sender === "bot" && message.timestamp && (
+                  <div className="flex items-center justify-between mt-2 px-1">
+                    <span className={`text-xs ${themeClasses.textMuted}`}>
+                      {formatTime(message.timestamp)}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         ))}
 
         {isLoading && (
-          <div className="flex justify-start mb-4">
-            <div className={`${themeClasses.botBubbleBg} rounded-2xl px-4 py-3 shadow-md backdrop-blur-sm border ${themeClasses.border}`}>
-              <div className="flex space-x-1">
-                <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
-                <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce [animation-delay:0.2s]"></div>
-                <div className="w-2 h-2 bg-pink-400 rounded-full animate-bounce [animation-delay:0.4s]"></div>
+          <div className="flex justify-start group">
+            <div className="flex items-start space-x-3 max-w-[75%]">
+              <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${themeClasses.botBubbleBg} border ${themeClasses.border}`}>
+                <Bot className="w-4 h-4 text-blue-400" />
+              </div>
+              <div className={`${themeClasses.botBubbleBg} rounded-2xl px-4 py-3 shadow-md backdrop-blur-sm border ${themeClasses.border}`}>
+                <div className="flex items-center space-x-2 mb-2">
+                  <span className="text-xs font-medium text-blue-400">Nextie</span>
+                  <span className={`text-xs ${themeClasses.textMuted}`}>thinking...</span>
+                </div>
+                <div className="flex space-x-1">
+                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
+                  <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce [animation-delay:0.2s]"></div>
+                  <div className="w-2 h-2 bg-pink-400 rounded-full animate-bounce [animation-delay:0.4s]"></div>
+                </div>
               </div>
             </div>
           </div>
@@ -324,32 +656,68 @@ export default function ChatPage() {
       {/* Sleek Message Input */}
       <div className={`relative z-20 ${themeClasses.cardBg} border-t ${themeClasses.border}`}>
         <div className="max-w-4xl mx-auto p-4">
-          <div className="flex gap-3">
+          <div className="flex gap-3 items-center">
+            {/* Input Field */}
             <input
               type="text"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   sendMessage(e);
                 }
               }}
               placeholder="Type your message..."
-              className={`flex-1 rounded-2xl px-5 py-3 ${themeClasses.inputBg} ${themeClasses.inputTextColor} focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent border ${themeClasses.inputBorder} text-sm md:text-base transition-all duration-300 backdrop-blur-sm placeholder:${themeClasses.textMuted}`}
+              className={`flex-1 rounded-2xl px-5 py-3 ${themeClasses.inputBg} ${themeClasses.inputTextColor} 
+        focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent border 
+        ${themeClasses.inputBorder} text-sm md:text-base transition-all duration-300 
+        backdrop-blur-sm placeholder:${themeClasses.textMuted}`}
               disabled={isLoading || !selectedModel}
             />
-            <button
-              onClick={sendMessage}
-              disabled={isLoading || !message.trim() || !selectedModel}
-              className="rounded-2xl px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-medium hover:from-blue-600 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 flex items-center justify-center text-sm md:text-base shadow-lg hover:shadow-xl hover:scale-105"
-            >
-              Send
-              <ArrowRight className="ml-2 w-4 h-4" />
-            </button>
+
+            {/* Stop + Timer Row */}
+            {isLoading ? (
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => abortControllerRef.current?.abort()}
+                  className="rounded-2xl px-5 py-3 bg-gradient-to-r from-red-500 to-pink-600 
+            text-white font-medium hover:from-red-600 hover:to-pink-700 focus:outline-none 
+            focus:ring-2 focus:ring-red-500/50 transition-all duration-300 flex items-center 
+            justify-center text-sm md:text-base shadow-lg hover:shadow-xl hover:scale-105"
+                >
+                  Stop
+                </button>
+
+                {/* Timer Box */}
+                <div
+                  className={`${themeClasses.cardBg} rounded-xl px-3 py-2 shadow-md flex items-center gap-2`}
+                >
+                  <Clock className="w-4 h-4 text-blue-400 animate-spin" />
+                  <span className={`text-xs font-mono ${themeClasses.text}`}>
+                    {currentTimer.toFixed(1)}s
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={sendMessage}
+                disabled={!message.trim() || !selectedModel}
+                className="rounded-2xl px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 
+          text-white font-medium hover:from-blue-600 hover:to-purple-700 focus:outline-none 
+          focus:ring-2 focus:ring-blue-500/50 disabled:opacity-50 disabled:cursor-not-allowed 
+          transition-all duration-300 flex items-center justify-center text-sm md:text-base 
+          shadow-lg hover:shadow-xl hover:scale-105"
+              >
+                Send
+                <ArrowRight className="ml-2 w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       </div>
+
+
     </div>
   );
 }
