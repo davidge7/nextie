@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect, JSX } from "react";
 import axios from "axios";
 import { Sparkles, Sun, Moon, ArrowRight, Clock, Zap, AlertCircle, Bot, Check, Copy, User } from 'lucide-react';
+import { RefreshCw } from "lucide-react";
 
 interface Model {
   name: string;
@@ -18,6 +19,7 @@ interface ChatMessage {
   responseTime?: number;
   timestamp?: Date;
   isError?: boolean;
+  retryText?: string;
 }
 
 export default function ChatPage() {
@@ -117,27 +119,31 @@ export default function ChatPage() {
     }
   };
 
-  const sendMessage = async (e: React.FormEvent | React.MouseEvent) => {
-    e.preventDefault();
+  const sendMessage = async (
+    e?: React.FormEvent | React.MouseEvent,
+    overrideText?: string
+  ) => {
+    if (e) e.preventDefault();
 
-    if (!message.trim() || isLoading || !selectedModel) return;
+    const inputText = overrideText ?? message.trim();
+    if (!inputText || isLoading || !selectedModel) return;
 
     const userMessage: ChatMessage = {
       sender: "user",
-      text: message.trim(),
+      text: inputText,
       timestamp: new Date(),
+      retryText: inputText,
     };
 
     const newChat = [...chat, userMessage];
     setChat(newChat);
-    setMessage("");
+    if (!overrideText) setMessage(""); // only clear input when it’s a fresh message
     setIsLoading(true);
 
     startTimer();
     const startTime = performance.now();
 
     try {
-      // create new controller before fetch
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
@@ -148,7 +154,7 @@ export default function ChatPage() {
           message: userMessage.text,
           modelName: selectedModel,
         }),
-        signal: controller.signal, // 🔑 attach signal
+        signal: controller.signal,
       });
 
       if (!res.body) throw new Error("No response body");
@@ -157,10 +163,9 @@ export default function ChatPage() {
       const decoder = new TextDecoder();
 
       let botMessage = "";
-
       setChat((prev) => [
         ...prev,
-        { sender: "bot", text: "", timestamp: new Date() },
+        { sender: "bot", text: "", timestamp: new Date(), retryText: inputText },
       ]);
 
       while (true) {
@@ -175,6 +180,7 @@ export default function ChatPage() {
             ...updated[updated.length - 1],
             text: botMessage,
             responseTime: performance.now() - startTime,
+            retryText: inputText,
           };
           return updated;
         });
@@ -194,6 +200,7 @@ export default function ChatPage() {
             responseTime: performance.now() - startTime,
             timestamp: new Date(),
             isError: true,
+            retryText: inputText, // 🔑 save original text for retry
           },
         ]);
       }
@@ -204,6 +211,7 @@ export default function ChatPage() {
       setCurrentTimer(0);
     }
   };
+
 
 
   const formatTime = (date: Date) => {
@@ -577,8 +585,8 @@ export default function ChatPage() {
                           )}
                         </button>
 
-                        {/* Try Again Button (only on errors) */}
-                        {message.isError && message.retryText && (
+                        {/* Try Again Button  */}
+                        {
                           <button
                             onClick={() => sendMessage(undefined, message.retryText)}
                             className="p-1.5 rounded-lg text-red-400 hover:text-red-500 hover:bg-gray-200/10 transition-all"
@@ -586,7 +594,7 @@ export default function ChatPage() {
                           >
                             <RefreshCw className="w-3 h-3" />
                           </button>
-                        )}
+                        }
                       </div>
                     </div>
                   )}
