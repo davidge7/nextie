@@ -26,6 +26,8 @@ export async function POST(request: Request) {
           }
         } catch (err) {
           console.error("Stream error:", err);
+          const errorMsg = err instanceof Error ? err.message : "Unknown stream error";
+          controller.enqueue(encoder.encode(`[Error]: ${errorMsg}`));
           controller.error(err);
         } finally {
           controller.close();
@@ -40,8 +42,18 @@ export async function POST(request: Request) {
         "Transfer-Encoding": "chunked",
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Chat API Error:", error);
-    return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
+
+    // ✅ Forward the real error message
+    return NextResponse.json(
+      {
+        error:
+          error?.message ||
+          "Something went wrong while generating content. Please try again.",
+        details: error?.response?.data || null, // forward extra details if any
+      },
+      { status: error?.status || 500 }
+    );
   }
 }
