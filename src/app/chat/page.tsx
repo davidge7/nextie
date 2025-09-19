@@ -34,6 +34,7 @@ export default function ChatPage() {
   const [timerInterval, setTimerInterval] = useState<NodeJS.Timeout | null>(null);
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Dark mode state
   const [isDarkMode, setIsDarkMode] = useState(true);
@@ -124,49 +125,86 @@ export default function ChatPage() {
     const userMessage: ChatMessage = {
       sender: "user",
       text: message.trim(),
-      timestamp: new Date()
+      timestamp: new Date(),
     };
+
     const newChat = [...chat, userMessage];
     setChat(newChat);
     setMessage("");
     setIsLoading(true);
 
-    // Start the live timer
     startTimer();
-
     const startTime = performance.now();
 
     try {
-      const res = await axios.post("/api/chat", {
-        message: userMessage.text,
-        modelName: selectedModel
+      // create new controller before fetch
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: userMessage.text,
+          modelName: selectedModel,
+        }),
+        signal: controller.signal, // 🔑 attach signal
       });
 
-      const endTime = performance.now();
-      const duration = endTime - startTime;
+      if (!res.body) throw new Error("No response body");
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+
+      let botMessage = "";
+
+      setChat((prev) => [
+        ...prev,
+        { sender: "bot", text: "", timestamp: new Date() },
+      ]);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        botMessage += decoder.decode(value, { stream: true });
+
+        setChat((prev) => {
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            ...updated[updated.length - 1],
+            text: botMessage,
+            responseTime: performance.now() - startTime,
+          };
+          return updated;
+        });
+      }
 
       stopTimer();
-
-      setChat([...newChat, {
-        sender: "bot",
-        text: res.data.reply,
-        responseTime: duration
-      }]);
     } catch (err: any) {
+      if (err.name === "AbortError") {
+        console.log("Stream aborted by user");
+      } else {
+        console.error("Streaming error:", err);
+        setChat((prev) => [
+          ...prev,
+          {
+            sender: "bot",
+            text: `❌ Error while processing your request.`,
+            responseTime: performance.now() - startTime,
+            timestamp: new Date(),
+            isError: true,
+          },
+        ]);
+      }
       stopTimer();
-      console.error(err);
-      setChat([...newChat, {
-        sender: "bot",
-        text: `I apologize, but I encountered an error while processing your request. Please try again.`,
-        responseTime: performance.now() - startTime,
-        timestamp: new Date(),
-        isError: true
-      }]);
     } finally {
+      abortControllerRef.current = null;
       setIsLoading(false);
       setCurrentTimer(0);
     }
   };
+
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -199,7 +237,13 @@ export default function ChatPage() {
     successBg: isDarkMode ? "bg-green-900/20 border-green-800/30" : "bg-green-50/80 border-green-200/50",
   };
 
-  const MarkdownRenderer = ({ content }: { content: string }) => {
+  const MarkdownRenderer = ({
+    content,
+    messageIndex,
+  }: {
+    content: string;
+    messageIndex: number;
+  }) => {
     const renderContent = () => {
       const lines = content.split('\n');
       const elements: JSX.Element[] = [];
@@ -218,7 +262,7 @@ export default function ChatPage() {
                     {codeLanguage || 'code'}
                   </span>
                   <button
-                    onClick={() => copyToClipboard(codeContent, index)}
+                    onClick={() => copyToClipboard(codeContent, messageIndex)}
                     className={`text-xs px-2 py-1 rounded ${themeClasses.textMuted} hover:${themeClasses.text} transition-colors`}
                   >
                     {copiedMessageIndex === index ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
@@ -478,8 +522,8 @@ export default function ChatPage() {
             <div className={`flex max-w-[85%] md:max-w-[75%] ${message.sender === "user" ? "flex-row-reverse" : "flex-row"} items-start space-x-3`}>
               {/* Avatar */}
               <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${message.sender === "user"
-                  ? "bg-gradient-to-r from-blue-500 to-purple-600 ml-3"
-                  : `${message.isError ? themeClasses.errorBg : themeClasses.botBubbleBg} border ${message.isError ? 'border-red-500/30' : themeClasses.border} mr-3`
+                ? "bg-gradient-to-r from-blue-500 to-purple-600 ml-3"
+                : `${message.isError ? themeClasses.errorBg : themeClasses.botBubbleBg} border ${message.isError ? 'border-red-500/30' : themeClasses.border} mr-3`
                 }`}>
                 {message.sender === "user" ? (
                   <User className="w-4 h-4 text-white" />
@@ -492,10 +536,10 @@ export default function ChatPage() {
               <div className="flex-1 min-w-0">
                 <div
                   className={`rounded-2xl px-4 py-3 ${message.sender === "user"
-                      ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg"
-                      : message.isError
-                        ? `${themeClasses.errorBg} border shadow-md backdrop-blur-sm`
-                        : `${themeClasses.botBubbleBg} ${themeClasses.botBubbleText} shadow-md backdrop-blur-sm border ${themeClasses.border}`
+                    ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg"
+                    : message.isError
+                      ? `${themeClasses.errorBg} border shadow-md backdrop-blur-sm`
+                      : `${themeClasses.botBubbleBg} ${themeClasses.botBubbleText} shadow-md backdrop-blur-sm border ${themeClasses.border}`
                     }`}
                 >
                   {/* Message Header for Bot */}
@@ -535,7 +579,7 @@ export default function ChatPage() {
                     {message.sender === "user" ? (
                       <p>{message.text}</p>
                     ) : (
-                      <MarkdownRenderer content={message.text} />
+                      <MarkdownRenderer content={message.text} messageIndex={i} />
                     )}
                   </div>
 
@@ -587,32 +631,68 @@ export default function ChatPage() {
       {/* Sleek Message Input */}
       <div className={`relative z-20 ${themeClasses.cardBg} border-t ${themeClasses.border}`}>
         <div className="max-w-4xl mx-auto p-4">
-          <div className="flex gap-3">
+          <div className="flex gap-3 items-center">
+            {/* Input Field */}
             <input
               type="text"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   sendMessage(e);
                 }
               }}
               placeholder="Type your message..."
-              className={`flex-1 rounded-2xl px-5 py-3 ${themeClasses.inputBg} ${themeClasses.inputTextColor} focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent border ${themeClasses.inputBorder} text-sm md:text-base transition-all duration-300 backdrop-blur-sm placeholder:${themeClasses.textMuted}`}
+              className={`flex-1 rounded-2xl px-5 py-3 ${themeClasses.inputBg} ${themeClasses.inputTextColor} 
+        focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent border 
+        ${themeClasses.inputBorder} text-sm md:text-base transition-all duration-300 
+        backdrop-blur-sm placeholder:${themeClasses.textMuted}`}
               disabled={isLoading || !selectedModel}
             />
-            <button
-              onClick={sendMessage}
-              disabled={isLoading || !message.trim() || !selectedModel}
-              className="rounded-2xl px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-medium hover:from-blue-600 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 flex items-center justify-center text-sm md:text-base shadow-lg hover:shadow-xl hover:scale-105"
-            >
-              Send
-              <ArrowRight className="ml-2 w-4 h-4" />
-            </button>
+
+            {/* Stop + Timer Row */}
+            {isLoading ? (
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => abortControllerRef.current?.abort()}
+                  className="rounded-2xl px-5 py-3 bg-gradient-to-r from-red-500 to-pink-600 
+            text-white font-medium hover:from-red-600 hover:to-pink-700 focus:outline-none 
+            focus:ring-2 focus:ring-red-500/50 transition-all duration-300 flex items-center 
+            justify-center text-sm md:text-base shadow-lg hover:shadow-xl hover:scale-105"
+                >
+                  Stop
+                </button>
+
+                {/* Timer Box */}
+                <div
+                  className={`${themeClasses.cardBg} rounded-xl px-3 py-2 shadow-md flex items-center gap-2`}
+                >
+                  <Clock className="w-4 h-4 text-blue-400 animate-spin" />
+                  <span className={`text-xs font-mono ${themeClasses.text}`}>
+                    {currentTimer.toFixed(1)}s
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={sendMessage}
+                disabled={!message.trim() || !selectedModel}
+                className="rounded-2xl px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 
+          text-white font-medium hover:from-blue-600 hover:to-purple-700 focus:outline-none 
+          focus:ring-2 focus:ring-blue-500/50 disabled:opacity-50 disabled:cursor-not-allowed 
+          transition-all duration-300 flex items-center justify-center text-sm md:text-base 
+          shadow-lg hover:shadow-xl hover:scale-105"
+              >
+                Send
+                <ArrowRight className="ml-2 w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       </div>
+
+
     </div>
   );
 }
