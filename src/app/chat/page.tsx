@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect, JSX } from "react";
 import axios from "axios";
 import { Sparkles, Sun, Moon, ArrowRight, Clock, Zap, AlertCircle, Bot, Check, Copy, User } from 'lucide-react';
 import { RefreshCw } from "lucide-react";
+import { useTheme } from '../../context/themeContext';
 
 interface Model {
   name: string;
@@ -23,6 +24,7 @@ interface ChatMessage {
 }
 
 export default function ChatPage() {
+  const { isDarkMode, toggleTheme, themeClasses } = useTheme();
   const [message, setMessage] = useState("");
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -39,7 +41,6 @@ export default function ChatPage() {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // Dark mode state
-  const [isDarkMode, setIsDarkMode] = useState(true);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
 
   // Effect for mouse follower
@@ -89,10 +90,6 @@ export default function ChatPage() {
     }
     fetchModels();
   }, []);
-
-  const toggleDarkMode = () => {
-    setIsDarkMode(!isDarkMode);
-  };
 
   const startTimer = () => {
     setCurrentTimer(0);
@@ -216,33 +213,6 @@ export default function ChatPage() {
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
-  // Theme classes with sleeker design
-  const themeClasses = {
-    background: isDarkMode
-      ? "bg-gradient-to-br from-slate-950 via-purple-950 to-slate-950"
-      : "bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50",
-    text: isDarkMode ? "text-gray-100" : "text-gray-900",
-    textSecondary: isDarkMode ? "text-gray-300" : "text-gray-600",
-    textMuted: isDarkMode ? "text-gray-500" : "text-gray-400",
-    border: isDarkMode ? "border-gray-800/50" : "border-gray-200/50",
-    borderHover: isDarkMode ? "border-gray-700/70" : "border-gray-300/70",
-    cardBg: isDarkMode
-      ? "bg-gray-900/20 backdrop-blur-xl border border-gray-800/30"
-      : "bg-white/40 backdrop-blur-xl border border-gray-200/30",
-    glowColor: isDarkMode ? "rgba(99, 102, 241, 0.04)" : "rgba(99, 102, 241, 0.06)",
-    inputBg: isDarkMode ? "bg-gray-900/30" : "bg-white/60",
-    inputBorder: isDarkMode ? "border-gray-700/50" : "border-gray-300/50",
-    inputTextColor: isDarkMode ? "text-gray-100" : "text-gray-900",
-    botBubbleBg: isDarkMode ? "bg-gray-800/40" : "bg-white/80",
-    botBubbleText: isDarkMode ? "text-gray-100" : "text-gray-900",
-    dropdownBg: isDarkMode ? "bg-gray-900/60" : "bg-white/80",
-    dropdownBorder: isDarkMode ? "border-gray-700/50" : "border-gray-300/50",
-    dropdownText: isDarkMode ? "text-gray-100" : "text-gray-900",
-    errorBg: isDarkMode ? "bg-red-900/20 border-red-800/30" : "bg-red-50/80 border-red-200/50",
-    errorText: isDarkMode ? "text-red-300" : "text-red-700",
-    successBg: isDarkMode ? "bg-green-900/20 border-green-800/30" : "bg-green-50/80 border-green-200/50",
   };
 
   const MarkdownRenderer = ({
@@ -497,7 +467,7 @@ export default function ChatPage() {
             </div>
 
             <button
-              onClick={toggleDarkMode}
+              onClick={toggleTheme}
               className={`p-2.5 rounded-xl ${themeClasses.inputBg} ${themeClasses.textMuted} hover:${themeClasses.text} transition-all duration-300 backdrop-blur-sm border ${themeClasses.inputBorder} hover:scale-105`}
             >
               {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
